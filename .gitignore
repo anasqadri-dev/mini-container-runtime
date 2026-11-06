@@ -1,1 +1,5 @@
 *.docx
+build/
+build-make/
+*.o
+rootfs/
