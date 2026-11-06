@@ -1,6 +1,7 @@
 #include <stdio.h>
 
 #include "cli.h"
+#include "container.h"
 #include "util.h"
 
 int main(int argc, char **argv)
@@ -21,8 +22,7 @@ int main(int argc, char **argv)
         printf("mcr %s\n", MCR_VERSION);
         return 0;
     case CMD_RUN:
-        LOG_ERR("run is not implemented yet");
-        return 1;
+        return container_run(&opts);
     case CMD_HELP:
     default:
         cli_print_usage();
