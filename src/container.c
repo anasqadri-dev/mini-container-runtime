@@ -36,6 +36,9 @@ static int child_main(void *arg)
     if (fs_make_mounts_private() < 0)
         return EXIT_RUNTIME_ERROR;
 
+    if (o->rootfs && fs_setup_rootfs(o->rootfs) < 0)
+        return EXIT_RUNTIME_ERROR;
+
     if (fs_mount_proc() < 0)
         return EXIT_RUNTIME_ERROR;
 
@@ -54,6 +57,9 @@ int container_run(const mcr_options_t *opts)
         LOG_ERR("creating namespaces needs root privileges, try: sudo mcr run ...");
         return EXIT_RUNTIME_ERROR;
     }
+
+    if (opts->rootfs && fs_check_rootfs(opts->rootfs) < 0)
+        return EXIT_RUNTIME_ERROR;
 
     /* The child runs on its own stack. mmap gives us a guard-friendly region
      * that is freed as soon as the child is gone. */
