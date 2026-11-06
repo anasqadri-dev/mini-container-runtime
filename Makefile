@@ -9,9 +9,18 @@ BUILD   := build-make
 SRCS    := $(filter-out src/main.c,$(wildcard src/*.c))
 OBJS    := $(patsubst src/%.c,$(BUILD)/%.o,$(SRCS))
 
-.PHONY: all clean
+TESTS   := $(patsubst tests/%.c,$(BUILD)/%,$(wildcard tests/test_*.c))
+
+.PHONY: all clean test
 
 all: $(BUILD)/mcr
+
+# Build and run the unit tests (the integration tests need root, see tests/integration.sh)
+test: $(TESTS)
+	@for t in $(TESTS); do echo "== $$t"; $$t || exit 1; done
+
+$(BUILD)/test_%: tests/test_%.c $(OBJS) | $(BUILD)
+	$(CC) $(CFLAGS) -Itests -o $@ $< $(OBJS)
 
 $(BUILD)/mcr: $(BUILD)/main.o $(OBJS)
 	$(CC) $(CFLAGS) -o $@ $^
