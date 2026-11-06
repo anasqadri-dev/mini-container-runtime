@@ -1,9 +1,31 @@
 #include <stdio.h>
 
-#define MCR_VERSION "0.1.0"
+#include "cli.h"
+#include "util.h"
 
-int main(void)
+int main(int argc, char **argv)
 {
-    printf("mcr %s\n", MCR_VERSION);
-    return 0;
+    mcr_options_t opts;
+    char err[256] = "";
+
+    if (cli_parse(argc, argv, &opts, err, sizeof(err)) < 0) {
+        fprintf(stderr, "mcr: %s\n\n", err);
+        cli_print_usage();
+        return 2;
+    }
+
+    mcr_verbose = opts.verbose;
+
+    switch (opts.command) {
+    case CMD_VERSION:
+        printf("mcr %s\n", MCR_VERSION);
+        return 0;
+    case CMD_RUN:
+        LOG_ERR("run is not implemented yet");
+        return 1;
+    case CMD_HELP:
+    default:
+        cli_print_usage();
+        return 0;
+    }
 }
