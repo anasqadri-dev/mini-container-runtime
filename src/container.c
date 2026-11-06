@@ -1,5 +1,6 @@
 #define _GNU_SOURCE
 #include "container.h"
+#include "fs.h"
 #include "util.h"
 
 #include <errno.h>
@@ -31,6 +32,12 @@ static int child_main(void *arg)
         LOG_ERR("sethostname failed: %s", strerror(errno));
         return EXIT_RUNTIME_ERROR;
     }
+
+    if (fs_make_mounts_private() < 0)
+        return EXIT_RUNTIME_ERROR;
+
+    if (fs_mount_proc() < 0)
+        return EXIT_RUNTIME_ERROR;
 
     LOG_DEBUG("container started, pid inside namespace = %d", getpid());
 
