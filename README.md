@@ -32,7 +32,7 @@ The project demonstrates concepts behind modern container technologies such as D
 - [ ] Memory resource limits using cgroups v2. _(implemented, still to be verified on a machine with the cgroups v2 memory controller)_
 - [ ] Process count limits using cgroups v2. _(implemented, still to be verified on a machine with the cgroups v2 pids controller)_
 - [x] Process information through procfs.
-- [x] Container lifecycle management and cleanup.
+- [x] Container lifecycle management and cleanup (`ps`, `inspect`, `stop`, `rm`).
 
 _Features will be marked complete as they are implemented and tested._
 
@@ -122,13 +122,45 @@ sudo ./build/mcr run --rootfs ./rootfs -- /bin/sh
 sudo ./build/mcr run --rootfs ./rootfs --memory 64M --pids 32 -- /bin/sh
 ```
 
+### 5. Manage containers
+
+Containers started with `-d` run in the background. Every container gets an
+id and a status (`CREATED` -> `RUNNING` -> `STOPPED`).
+
+```bash
+id=$(sudo ./build/mcr run -d --rootfs ./rootfs -- /bin/sleep 300)
+
+sudo ./build/mcr ps               # list containers
+sudo ./build/mcr inspect $id      # details, limits, namespaces, live usage
+sudo ./build/mcr stop $id         # SIGTERM, then SIGKILL after 10 seconds
+sudo ./build/mcr rm $id           # delete the record of a stopped container
+```
+
+```text
+CONTAINER ID   PID      STATUS         COMMAND
+------------------------------------------------------------
+a81f42c7       8231     RUNNING        /bin/sleep 300
+5dcf2e55       -        STOPPED (137)  sleep 300
+```
+
+Ids can be shortened to any unique prefix (`mcr stop a81`).
+
 | Option                 | Description                                         |
 | ---------------------- | --------------------------------------------------- |
 | `-r, --rootfs <dir>`   | Root filesystem of the container                    |
 | `-n, --hostname <name>`| Hostname inside the container (default `container`) |
 | `-m, --memory <size>`  | Memory limit, e.g. `64M`, `1G`                      |
 | `-p, --pids <n>`       | Maximum number of processes                         |
+| `-d, --detach`         | Run in the background and print the container id    |
+| `--rm`                 | Remove the container's record when it exits         |
 | `-v, --verbose`        | Debug output                                        |
+
+| Command                      | Description                                            |
+| ---------------------------- | ------------------------------------------------------ |
+| `mcr ps`                     | List containers with id, PID, status and command       |
+| `mcr inspect <id>`           | Show configuration, timestamps, exit code, namespaces  |
+| `mcr stop [-t secs] <id>`    | SIGTERM, then SIGKILL after the timeout (default 10)   |
+| `mcr rm [-f] [-t secs] <id>` | Remove a stopped container (`-f` stops it first)       |
 
 Everything after the options (optionally after `--`) is the program to run.
 The exit status of `mcr` is the exit status of that program. More examples
