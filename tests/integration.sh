@@ -27,7 +27,15 @@ if [ ! -x "$MCR" ]; then
     exit 2
 fi
 
-cleanup() { [ -z "${MCR_TEST_ROOTFS:-}" ] && rm -rf "$ROOTFS"; }
+# Keep the tests' container records away from the real ones in /run/mcr.
+export MCR_STATE_DIR
+MCR_STATE_DIR="$(mktemp -d /tmp/mcr-state-XXXXXX)"
+
+cleanup() {
+    for id in $(ls "$MCR_STATE_DIR" 2>/dev/null); do "$MCR" rm -f -t 1 "$id" >/dev/null 2>&1; done
+    rm -rf "$MCR_STATE_DIR"
+    [ -z "${MCR_TEST_ROOTFS:-}" ] && rm -rf "$ROOTFS"
+}
 trap cleanup EXIT
 
 if [ -z "${MCR_TEST_ROOTFS:-}" ]; then
@@ -100,6 +108,89 @@ wait $pid 2>/dev/null; rc=$?
 [ $rc -eq 137 ] && ok "repeated SIGTERM stops the container (exit 128+9)" || bad "signal handling" "got $rc"
 sleep 0.2
 pgrep -x sleep >/dev/null && bad "contained process survived" || ok "no process left behind after the container is stopped"
+
+echo "== container lifecycle (create, run, inspect, stop, clean up)"
+
+# records left by the sections above would confuse the checks below
+rm -rf "${MCR_STATE_DIR:?}"/*
+
+# a foreground container leaves a STOPPED record with its exit code
+"$MCR" run -- sh -c 'exit 5'
+fg_id="$(ls "$MCR_STATE_DIR" | head -1)"
+[ -n "$fg_id" ] && ok "run records a container id ($fg_id)" || bad "no container record created"
+
+out="$("$MCR" ps)"
+echo "$out" | grep "$fg_id" | grep -q "STOPPED (5)" \
+    && ok "ps shows the finished container with its exit code" || bad "ps output" "$out"
+
+out="$("$MCR" inspect "$fg_id")"
+echo "$out" | grep -q "^Exit code:     5" && ok "inspect shows the exit code" || bad "inspect exit code" "$out"
+"$MCR" rm "$fg_id" >/dev/null && [ ! -e "$MCR_STATE_DIR/$fg_id" ] \
+    && ok "rm deletes a stopped container" || bad "rm of stopped container"
+
+"$MCR" run --rm -- true
+[ -z "$(ls "$MCR_STATE_DIR")" ] && ok "--rm removes the record when the container exits" || bad "--rm left a record"
+
+# detached container: CREATED -> RUNNING -> inspect -> STOPPED -> removed
+id="$("$MCR" run -d --hostname bg-box -- sleep 300)"
+sleep 0.5
+if [ "${#id}" -eq 8 ]; then ok "run -d prints the container id ($id)"; else bad "run -d output" "got '$id'"; fi
+
+"$MCR" ps | grep "$id" | grep -q "RUNNING" && ok "ps lists the container as RUNNING" || bad "ps does not show RUNNING"
+
+out="$("$MCR" inspect "${id:0:3}")"
+echo "$out" | grep -q "^Status:        RUNNING" && ok "inspect works with an id prefix" || bad "inspect prefix" "$out"
+echo "$out" | grep -q "^Hostname:      bg-box" && ok "inspect shows the hostname" || bad "inspect hostname"
+n_iso="$(echo "$out" | grep -c '(isolated)')"
+[ "$n_iso" -eq 4 ] && ok "inspect shows PID, UTS, mount and IPC namespaces as isolated" \
+    || bad "namespaces not isolated" "isolated=$n_iso"
+
+host_pid="$(grep '^pid=' "$MCR_STATE_DIR/$id/state" | cut -d= -f2)"
+[ -d "/proc/$host_pid" ] && ok "container PID 1 has host PID $host_pid" || bad "host pid not alive"
+
+"$MCR" rm "$id" 2>/dev/null; rc=$?
+[ $rc -ne 0 ] && ok "rm refuses to remove a running container" || bad "rm removed a running container"
+
+"$MCR" stop -t 1 "$id" >/dev/null 2>&1
+"$MCR" ps | grep "$id" | grep -q "STOPPED" && ok "stop: container is STOPPED afterwards" || bad "stop did not stop"
+[ ! -d "/proc/$host_pid" ] && ok "stop: the container process is gone" || bad "container process survived stop"
+
+# a program that handles SIGTERM exits cleanly and fast, no SIGKILL needed
+id="$("$MCR" run -d -- sh -c 'trap "exit 0" TERM; while :; do sleep 0.1; done')"
+sleep 0.5
+start=$(date +%s)
+"$MCR" stop "$id" >/dev/null 2>&1
+took=$(( $(date +%s) - start ))
+code="$("$MCR" inspect "$id" | awk '/^Exit code/ {print $3}')"
+[ "$code" = "0" ] && [ "$took" -lt 5 ] && ok "stop: SIGTERM lets a well-behaved program exit with 0 (${took}s)" \
+    || bad "graceful stop" "exit=$code took=${took}s"
+
+# a program that ignores TERM has to be killed after the timeout
+id="$("$MCR" run -d -- sleep 300)"
+sleep 0.5
+"$MCR" stop -t 1 "$id" >/dev/null 2>&1
+code="$("$MCR" inspect "$id" | awk '/^Exit code/ {print $3}')"
+[ "$code" = "137" ] && ok "stop: falls back to SIGKILL (exit 137) after the timeout" || bad "forced stop" "exit=$code"
+
+"$MCR" stop "$id" | grep -q "not running" && ok "stop on a stopped container is harmless" || bad "double stop"
+
+id="$("$MCR" run -d -- sleep 300)"
+sleep 0.5
+"$MCR" rm -f -t 1 "$id" >/dev/null 2>&1
+[ ! -e "$MCR_STATE_DIR/$id" ] && pgrep -x sleep >/dev/null && bad "rm -f left a process" || ok "rm -f stops and removes a running container"
+
+# supervisor killed by accident: the record must not stay RUNNING forever
+id="$("$MCR" run -d -- sleep 300)"
+sleep 0.5
+sup="$(grep '^runtime_pid=' "$MCR_STATE_DIR/$id/state" | cut -d= -f2)"
+kill -9 "$sup"; sleep 0.3
+"$MCR" stop -t 1 "$id" >/dev/null 2>&1
+"$MCR" ps | grep "$id" | grep -q "STOPPED" && ok "a container whose supervisor was killed can still be stopped" || bad "orphan container"
+
+"$MCR" inspect nosuchid >/dev/null 2>&1; rc=$?
+[ $rc -eq 1 ] && ok "unknown container id is an error" || bad "unknown id" "rc=$rc"
+
+[ -z "$(pgrep -x sleep)" ] && ok "no container processes are left behind" || bad "leftover sleep processes"
 
 echo "== cgroups v2"
 
