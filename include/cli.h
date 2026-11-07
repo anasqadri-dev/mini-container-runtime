@@ -3,11 +3,16 @@
 
 #include <stddef.h>
 
-#define MCR_VERSION "0.1.0"
+#define MCR_VERSION "0.2.0"
+#define MCR_DEFAULT_STOP_TIMEOUT 10
 
 typedef enum {
     CMD_NONE = 0,
     CMD_RUN,
+    CMD_PS,
+    CMD_INSPECT,
+    CMD_STOP,
+    CMD_RM,
     CMD_HELP,
     CMD_VERSION
 } mcr_command_t;
@@ -21,6 +26,13 @@ typedef struct {
     long long   memory_bytes; /* 0 = unlimited */
     long        pids_max;     /* 0 = unlimited */
     int         verbose;
+    int         detach;       /* run: start in the background and print the id */
+    int         auto_remove;  /* run: delete the container's metadata on exit */
+
+    /* inspect / stop / rm */
+    const char *id;           /* container id or unique prefix */
+    int         stop_timeout; /* stop: seconds to wait after SIGTERM before SIGKILL */
+    int         force;        /* rm: stop a running container first */
 
     char      **cmd_argv;     /* program to run inside the container */
     int         cmd_argc;
