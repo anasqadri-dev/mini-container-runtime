@@ -125,6 +125,98 @@ static void test_errors(void)
     CHECK(cli_parse(5, nohost, &o, err, sizeof(err)) < 0);
 }
 
+static void test_run_detach_and_rm(void)
+{
+    mcr_options_t o;
+    char err[128];
+    char *argv[] = {"mcr", "run", "-d", "--rm", "/bin/sleep", "60", NULL};
+
+    CHECK(cli_parse(6, argv, &o, err, sizeof(err)) == 0);
+    CHECK(o.command == CMD_RUN);
+    CHECK(o.detach == 1);
+    CHECK(o.auto_remove == 1);
+    CHECK(o.cmd_argc == 2);
+
+    char *plain[] = {"mcr", "run", "ls", NULL};
+    CHECK(cli_parse(3, plain, &o, err, sizeof(err)) == 0);
+    CHECK(o.detach == 0 && o.auto_remove == 0);
+}
+
+static void test_ps(void)
+{
+    mcr_options_t o;
+    char err[128];
+
+    char *ok[] = {"mcr", "ps", NULL};
+    CHECK(cli_parse(2, ok, &o, err, sizeof(err)) == 0 && o.command == CMD_PS);
+
+    char *extra[] = {"mcr", "ps", "something", NULL};
+    CHECK(cli_parse(3, extra, &o, err, sizeof(err)) < 0);
+}
+
+static void test_inspect(void)
+{
+    mcr_options_t o;
+    char err[128];
+
+    char *ok[] = {"mcr", "inspect", "a81f42c7", NULL};
+    CHECK(cli_parse(3, ok, &o, err, sizeof(err)) == 0);
+    CHECK(o.command == CMD_INSPECT);
+    CHECK_STR(o.id, "a81f42c7");
+
+    char *none[] = {"mcr", "inspect", NULL};
+    CHECK(cli_parse(2, none, &o, err, sizeof(err)) < 0);
+
+    char *two[] = {"mcr", "inspect", "a", "b", NULL};
+    CHECK(cli_parse(4, two, &o, err, sizeof(err)) < 0);
+}
+
+static void test_stop(void)
+{
+    mcr_options_t o;
+    char err[128];
+
+    char *dflt[] = {"mcr", "stop", "a81f", NULL};
+    CHECK(cli_parse(3, dflt, &o, err, sizeof(err)) == 0);
+    CHECK(o.command == CMD_STOP);
+    CHECK_STR(o.id, "a81f");
+    CHECK(o.stop_timeout == MCR_DEFAULT_STOP_TIMEOUT);
+
+    char *timed[] = {"mcr", "stop", "-t", "3", "a81f", NULL};
+    CHECK(cli_parse(5, timed, &o, err, sizeof(err)) == 0 && o.stop_timeout == 3);
+
+    char *zero[] = {"mcr", "stop", "--time", "0", "a81f", NULL};
+    CHECK(cli_parse(5, zero, &o, err, sizeof(err)) == 0 && o.stop_timeout == 0);
+
+    char *bad[] = {"mcr", "stop", "-t", "soon", "a81f", NULL};
+    CHECK(cli_parse(5, bad, &o, err, sizeof(err)) < 0);
+
+    char *neg[] = {"mcr", "stop", "-t", "-1", "a81f", NULL};
+    CHECK(cli_parse(5, neg, &o, err, sizeof(err)) < 0);
+
+    char *noid[] = {"mcr", "stop", "-t", "3", NULL};
+    CHECK(cli_parse(4, noid, &o, err, sizeof(err)) < 0);
+}
+
+static void test_rm(void)
+{
+    mcr_options_t o;
+    char err[128];
+
+    char *plain[] = {"mcr", "rm", "a81f", NULL};
+    CHECK(cli_parse(3, plain, &o, err, sizeof(err)) == 0);
+    CHECK(o.command == CMD_RM && o.force == 0);
+
+    char *force[] = {"mcr", "rm", "-f", "a81f", NULL};
+    CHECK(cli_parse(4, force, &o, err, sizeof(err)) == 0 && o.force == 1);
+
+    char *longf[] = {"mcr", "rm", "--force", "a81f", NULL};
+    CHECK(cli_parse(4, longf, &o, err, sizeof(err)) == 0 && o.force == 1);
+
+    char *unknown[] = {"mcr", "rm", "-x", "a81f", NULL};
+    CHECK(cli_parse(4, unknown, &o, err, sizeof(err)) < 0);
+}
+
 int main(void)
 {
     test_parse_size();
@@ -134,5 +226,10 @@ int main(void)
     test_run_all_options();
     test_options_after_command_belong_to_command();
     test_errors();
+    test_run_detach_and_rm();
+    test_ps();
+    test_inspect();
+    test_stop();
+    test_rm();
     TEST_SUMMARY();
 }
