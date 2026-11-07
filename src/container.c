@@ -2,6 +2,7 @@
 #include "container.h"
 #include "cgroup.h"
 #include "fs.h"
+#include "state.h"
 #include "util.h"
 
 #include <errno.h>
@@ -13,6 +14,7 @@
 #include <string.h>
 #include <sys/mman.h>
 #include <sys/wait.h>
+#include <time.h>
 #include <unistd.h>
 
 #define STACK_SIZE (1024 * 1024)
@@ -126,16 +128,16 @@ static int setup_cgroup(mcr_cgroup_t *cg, const mcr_options_t *opts, pid_t pid)
     return cgroup_add_pid(cg, pid);
 }
 
-int container_run(const mcr_options_t *opts)
+static void save_state(const mcr_state_t *st)
 {
-    if (geteuid() != 0) {
-        LOG_ERR("creating namespaces needs root privileges, try: sudo mcr run ...");
-        return EXIT_RUNTIME_ERROR;
-    }
+    if (state_save(st) < 0)
+        LOG_WARN("cannot save container state in %s: %s", state_dir(), strerror(errno));
+}
 
-    if (opts->rootfs && fs_check_rootfs(opts->rootfs) < 0)
-        return EXIT_RUNTIME_ERROR;
-
+/* Start, supervise and reap the container. Keeps st up to date and saves it
+ * at every transition: CREATED (already saved by the caller) -> RUNNING. */
+static int run_container(const mcr_options_t *opts, mcr_state_t *st)
+{
     int pipefd[2];
     if (pipe2(pipefd, O_CLOEXEC) < 0) {
         LOG_ERR("pipe failed: %s", strerror(errno));
@@ -166,6 +168,7 @@ int container_run(const mcr_options_t *opts)
     }
     LOG_DEBUG("child created, host pid = %d", pid);
     close(pipefd[0]);
+    st->pid = pid;
 
     g_child_pid = pid;
     install_signal_forwarding();
@@ -186,6 +189,10 @@ int container_run(const mcr_options_t *opts)
         if (write(pipefd[1], &go, 1) != 1)
             LOG_WARN("could not start container: %s", strerror(errno));
         close(pipefd[1]);
+
+        st->status = STATUS_RUNNING;
+        st->started = time(NULL);
+        save_state(st);
     }
 
     int status = 0;
@@ -218,4 +225,87 @@ int container_run(const mcr_options_t *opts)
     cgroup_destroy(&cg);
     munmap(stack, STACK_SIZE);
     return result;
+}
+
+/* Detach from the terminal: the parent returns 1 (and prints the id), the
+ * child becomes a session leader writing to output.log and returns 0. */
+static int daemonize(const mcr_state_t *st)
+{
+    char log[600];
+    state_path(st->id, "output.log", log, sizeof(log));
+
+    fflush(NULL);
+    pid_t p = fork();
+    if (p < 0) {
+        LOG_ERR("fork failed: %s", strerror(errno));
+        return -1;
+    }
+    if (p > 0)
+        return 1;
+
+    setsid();
+
+    int in = open("/dev/null", O_RDONLY);
+    int out = open(log, O_WRONLY | O_CREAT | O_APPEND, 0644);
+    if (in >= 0) {
+        dup2(in, STDIN_FILENO);
+        close(in);
+    }
+    if (out >= 0) {
+        dup2(out, STDOUT_FILENO);
+        dup2(out, STDERR_FILENO);
+        close(out);
+    }
+    return 0;
+}
+
+int container_run(const mcr_options_t *opts)
+{
+    if (geteuid() != 0) {
+        LOG_ERR("creating namespaces needs root privileges, try: sudo mcr run ...");
+        return EXIT_RUNTIME_ERROR;
+    }
+
+    if (opts->rootfs && fs_check_rootfs(opts->rootfs) < 0)
+        return EXIT_RUNTIME_ERROR;
+
+    mcr_state_t st;
+    if (state_init(&st) < 0) {
+        LOG_ERR("cannot create container id: %s", strerror(errno));
+        return EXIT_RUNTIME_ERROR;
+    }
+    state_set_command(&st, opts->cmd_argv, opts->cmd_argc);
+    snprintf(st.hostname, sizeof(st.hostname), "%s", opts->hostname);
+    if (opts->rootfs)
+        snprintf(st.rootfs, sizeof(st.rootfs), "%s", opts->rootfs);
+    st.memory_bytes = opts->memory_bytes;
+    st.pids_max = opts->pids_max;
+    st.runtime_pid = getpid();
+    save_state(&st);                       /* state: CREATED */
+    LOG_DEBUG("container id %s", st.id);
+
+    if (opts->detach) {
+        int d = daemonize(&st);
+        if (d < 0)
+            return EXIT_RUNTIME_ERROR;
+        if (d > 0) {
+            printf("%s\n", st.id);
+            return 0;
+        }
+        st.runtime_pid = getpid();         /* we are the supervisor now */
+        save_state(&st);
+    }
+
+    int rc = run_container(opts, &st);
+
+    st.status = STATUS_STOPPED;            /* state: STOPPED */
+    st.exit_code = rc;
+    st.finished = time(NULL);
+    if (opts->auto_remove) {
+        if (state_remove(st.id) < 0)
+            LOG_WARN("cannot remove container %s: %s", st.id, strerror(errno));
+    } else {
+        save_state(&st);
+    }
+    return rc;
 }
