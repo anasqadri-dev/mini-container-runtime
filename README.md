@@ -23,16 +23,16 @@ The project demonstrates concepts behind modern container technologies such as D
 
 ## Planned Features
 
-- [ ] Command-line interface for container execution.
-- [ ] Container process creation using Linux system calls.
-- [ ] Process isolation using PID namespaces.
-- [ ] Hostname isolation using UTS namespaces.
-- [ ] Mount namespace isolation.
-- [ ] Separate filesystem environment.
-- [ ] Memory resource limits using cgroups v2.
-- [ ] Process count limits using cgroups v2.
-- [ ] Process information through procfs.
-- [ ] Container lifecycle management and cleanup.
+- [x] Command-line interface for container execution.
+- [x] Container process creation using Linux system calls.
+- [x] Process isolation using PID namespaces.
+- [x] Hostname isolation using UTS namespaces.
+- [x] Mount namespace isolation.
+- [x] Separate filesystem environment.
+- [ ] Memory resource limits using cgroups v2. _(implemented, still to be verified on a machine with the cgroups v2 memory controller)_
+- [ ] Process count limits using cgroups v2. _(implemented, still to be verified on a machine with the cgroups v2 pids controller)_
+- [x] Process information through procfs.
+- [x] Container lifecycle management and cleanup.
 
 _Features will be marked complete as they are implemented and tested._
 
@@ -97,11 +97,46 @@ cmake -S . -B build
 cmake --build build
 ```
 
-### 3. Run the project
+### 3. Run the tests
 
-The execution command and runtime configuration will be documented once the CLI implementation is ready.
+```bash
+ctest --test-dir build --output-on-failure   # unit tests, no root needed
+sudo tests/integration.sh                    # starts real containers, needs root
+```
 
-**Note:** Container execution may require appropriate Linux capabilities and cgroups configuration, depending on the implemented features.
+See [docs/testing.md](docs/testing.md) for details.
+
+### 4. Run a container
+
+Creating namespaces needs root.
+
+```bash
+# new hostname + PID namespace, still using the host's files
+sudo ./build/mcr run --hostname demo -- /bin/sh
+
+# full filesystem isolation: build a small rootfs first
+scripts/make-rootfs.sh ./rootfs
+sudo ./build/mcr run --rootfs ./rootfs -- /bin/sh
+
+# with resource limits (cgroups v2)
+sudo ./build/mcr run --rootfs ./rootfs --memory 64M --pids 32 -- /bin/sh
+```
+
+| Option                 | Description                                         |
+| ---------------------- | --------------------------------------------------- |
+| `-r, --rootfs <dir>`   | Root filesystem of the container                    |
+| `-n, --hostname <name>`| Hostname inside the container (default `container`) |
+| `-m, --memory <size>`  | Memory limit, e.g. `64M`, `1G`                      |
+| `-p, --pids <n>`       | Maximum number of processes                         |
+| `-v, --verbose`        | Debug output                                        |
+
+Everything after the options (optionally after `--`) is the program to run.
+The exit status of `mcr` is the exit status of that program. More examples
+are in the [examples](examples/) folder and the design is explained in
+[docs/architecture.md](docs/architecture.md).
+
+> **Warning:** the container runs as real root and has no network, user or
+> seccomp isolation. It is a learning project, not a security boundary.
 
 ## Development Team
 
