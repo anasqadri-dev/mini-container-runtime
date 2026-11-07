@@ -22,6 +22,7 @@ make test
 | ------------- | --------------------------------------------------------------- |
 | `test_cli`    | `parse_size`, every option, `--` handling, error cases          |
 | `test_util`   | `write_file`, `read_file`, `mkdir_p`                            |
+| `test_state`  | Container records: ids, save/load round trip, prefix lookup, listing, removal, stale-record detection, rejection of malicious ids |
 | `test_cgroup` | Which values are written to which control files, using a fake cgroup directory in `/tmp` |
 
 The cgroup unit test cannot check real enforcement because the kernel
@@ -36,12 +37,15 @@ They start real containers and need root.
 sudo tests/integration.sh
 ```
 
-The script builds a temporary rootfs with `scripts/make-rootfs.sh` (or uses
+The script uses its own state directory (`MCR_STATE_DIR`), so it never touches
+containers you started yourself. It builds a temporary rootfs with `scripts/make-rootfs.sh` (or uses
 the one in `MCR_TEST_ROOTFS`) and checks:
 
 - hostname isolation, PID 1, the `/proc` process count, no mount leaks
 - the rootfs is visible, host directories are not, `/tmp` and `/dev` work
 - exit statuses (`7`, `125`, `127`) and signal handling
+- the full lifecycle: `run`, `ps`, `inspect`, `stop` (graceful and forced),
+  `rm`, `rm -f`, `run --rm`, and recovery when the supervisor is killed
 - `--pids` stops a fork bomb and `--memory` kills a program that allocates
   too much
 - the cgroup directory is removed afterwards

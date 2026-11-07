@@ -10,12 +10,14 @@ container. There is no daemon and no image format: one process calls
 | ------------------- | ----------------------------------------------------------- |
 | `src/main.c`        | Entry point, dispatches the parsed command                  |
 | `src/cli.c`         | Argument parsing and `parse_size()` (`64M`, `1G`, ...)      |
-| `src/container.c`   | `clone()`, parent/child synchronisation, signals, exit code |
+| `src/container.c`   | `clone()`, parent/child synchronisation, signals, exit code, detach |
+| `src/state.c`       | Container records on disk (id, status, pids, exit code)     |
+| `src/commands.c`    | `ps`, `inspect`, `stop`, `rm`                               |
 | `src/fs.c`          | Private mounts, `pivot_root`, `/dev`, `/tmp`, `/proc`       |
 | `src/cgroup.c`      | cgroups v2: create group, set limits, move pid, clean up    |
 | `src/util.c`        | Logging and small file helpers                              |
 
-`cli`, `fs`, `cgroup` and `util` are compiled into a static library
+`cli`, `fs`, `cgroup`, `state`, `commands` and `util` are compiled into a static library
 (`mcr_core`) so the unit tests can link against them.
 
 ## Life of a container
@@ -48,6 +50,57 @@ program could fork or allocate memory before the limits exist. The child
 therefore blocks on a pipe until the parent has finished the cgroup setup.
 If the setup fails, the parent closes the pipe without writing and kills the
 child, so the program never starts without the limits the user asked for.
+
+## Container lifecycle and state
+
+There is no daemon. Instead, every `mcr run` process supervises its own
+container and keeps a small record on disk, so that `ps`, `inspect`, `stop`
+and `rm` (separate short-lived `mcr` processes) can find it.
+
+```text
+        run                       process starts            exits / killed
+  ──────────────►  CREATED  ───────────────────►  RUNNING  ──────────────►  STOPPED  ──► rm ──► gone
+   record written              cgroup ready,                exit code saved
+                               "go" sent to child
+```
+
+State lives in `/run/mcr/containers/<id>/` (override with `MCR_STATE_DIR`):
+
+| File         | Content                                                              |
+| ------------ | -------------------------------------------------------------------- |
+| `state`      | `key=value` lines: status, host pid, supervisor pid, exit code, command, hostname, rootfs, limits, timestamps |
+| `output.log` | stdout and stderr of a detached container                            |
+
+Design notes:
+
+- **Ids** are 8 random hex characters. Any unique prefix is accepted. Ids are
+  validated strictly (8 hex characters) before they are turned into paths, so
+  something like `mcr rm ../../etc` cannot escape the state directory.
+- **Atomic updates:** the record is written to `state.tmp` and moved into place
+  with `rename()`, so a reader never sees a half-written file.
+- **`/run` is a tmpfs.** Records vanish on reboot, which matches reality
+  because the containers are gone too.
+- **Stale records:** if `mcr` is killed with `kill -9` it cannot write the final
+  status. `ps`, `inspect`, `stop` and `rm` therefore check whether the supervisor
+  and the container are still alive. If both are gone the record becomes
+  `STOPPED` with an unknown exit code. If only the supervisor died the container
+  is still reported `RUNNING` (it is), and `stop` can still kill it directly.
+  Process ids are not guarded against reuse, which is acceptable for a
+  teaching project.
+- **`run -d`** forks once, the parent prints the id and exits, and the child
+  calls `setsid()`, redirects its output to `output.log` and carries on as the
+  supervisor.
+
+### `stop`
+
+1. Send `SIGTERM` to the container's PID 1 (its host PID is in the record).
+2. Poll the record for up to `--time` seconds (default 10).
+3. If it is still running, send `SIGKILL`.
+
+Because PID 1 of a namespace ignores signals it has no handler for, a
+program like `sleep` never reacts to `SIGTERM` and is always killed after the
+timeout, which is the same thing Docker does. A program that traps `SIGTERM`
+exits at once. `SIGKILL` from the host cannot be ignored.
 
 ## Namespaces
 
@@ -127,4 +180,6 @@ signal. A second signal is therefore turned into `SIGKILL`.
   security boundary. Use it for learning, not for untrusted code.
 - No capability dropping or seccomp filtering.
 - No CPU limit (`cpu.max`), only memory and process count.
-- Containers are foreground only: no `ps`, `stop` or `exec` subcommands.
+- No `exec` or `logs` subcommand; the log of a detached container is the file
+  `/run/mcr/containers/<id>/output.log`.
+- A container cannot be restarted; start a new one with `run`.
