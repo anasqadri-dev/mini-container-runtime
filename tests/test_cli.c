@@ -213,6 +213,10 @@ static void test_rm(void)
     char *longf[] = {"mcr", "rm", "--force", "a81f", NULL};
     CHECK(cli_parse(4, longf, &o, err, sizeof(err)) == 0 && o.force == 1);
 
+    char *timed[] = {"mcr", "rm", "-f", "-t", "2", "a81f", NULL};
+    CHECK(cli_parse(6, timed, &o, err, sizeof(err)) == 0);
+    CHECK(o.force == 1 && o.stop_timeout == 2);
+
     char *unknown[] = {"mcr", "rm", "-x", "a81f", NULL};
     CHECK(cli_parse(4, unknown, &o, err, sizeof(err)) < 0);
 }

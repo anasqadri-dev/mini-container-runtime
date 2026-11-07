@@ -244,11 +244,12 @@ int cli_parse(int argc, char **argv, mcr_options_t *opts, char *err, size_t errl
     }
     if (strcmp(sub, "rm") == 0) {
         static const struct option lo[] = {
-            {"force", no_argument, NULL, 'f'}, {"verbose", no_argument, NULL, 'v'},
-            {"help", no_argument, NULL, 'h'}, {NULL, 0, NULL, 0}};
+            {"force", no_argument, NULL, 'f'}, {"time", required_argument, NULL, 't'},
+            {"verbose", no_argument, NULL, 'v'}, {"help", no_argument, NULL, 'h'},
+            {NULL, 0, NULL, 0}};
         opts->command = CMD_RM;
         opts->stop_timeout = MCR_DEFAULT_STOP_TIMEOUT;
-        return parse_id_command(argc - 1, argv + 1, opts, "+fvh", lo, err, errlen);
+        return parse_id_command(argc - 1, argv + 1, opts, "+ft:vh", lo, err, errlen);
     }
     if (strcmp(sub, "help") == 0 || strcmp(sub, "--help") == 0 || strcmp(sub, "-h") == 0) {
         opts->command = CMD_HELP;
@@ -272,7 +273,7 @@ void cli_print_usage(void)
          "  mcr ps                                       list containers\n"
          "  mcr inspect <id>                             show details of a container\n"
          "  mcr stop [-t seconds] <id>                   stop a running container\n"
-         "  mcr rm [-f] <id>                             remove a stopped container\n"
+         "  mcr rm [-f] [-t seconds] <id>               remove a stopped container\n"
          "  mcr help | version\n"
          "\n"
          "Options for run:\n"
@@ -286,7 +287,7 @@ void cli_print_usage(void)
          "  -h, --help             show this help\n"
          "\n"
          "Options for stop / rm:\n"
-         "  -t, --time <seconds>   stop: wait this long after SIGTERM, then SIGKILL (default 10)\n"
+         "  -t, --time <seconds>   wait this long after SIGTERM before SIGKILL (default 10)\n"
          "  -f, --force            rm: stop the container first if it is still running\n"
          "\n"
          "An <id> may be shortened to any unique prefix.\n"
