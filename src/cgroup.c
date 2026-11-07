@@ -17,7 +17,7 @@
 #define CGROUP2_SUPER_MAGIC 0x63677270
 #endif
 
-static char root_path[200] = MCR_CGROUP_DEFAULT_ROOT;
+static char root_path[256] = MCR_CGROUP_DEFAULT_ROOT;
 static int  root_overridden;
 
 void cgroup_set_root(const char *root)
@@ -26,13 +26,30 @@ void cgroup_set_root(const char *root)
     root_overridden = 1;
 }
 
-int cgroup_is_v2(void)
+static int is_v2_mount(const char *path)
 {
     struct statfs sfs;
 
-    if (statfs(root_path, &sfs) < 0)
+    if (statfs(path, &sfs) < 0)
         return 0;
     return sfs.f_type == CGROUP2_SUPER_MAGIC;
+}
+
+int cgroup_is_v2(void)
+{
+    if (is_v2_mount(root_path))
+        return 1;
+
+    /* Hybrid layout (older systemd setups): the v2 tree is mounted under
+     * <root>/unified while <root> itself holds the v1 controllers. */
+    char unified[300];
+    snprintf(unified, sizeof(unified), "%s/unified", root_path);
+    if (is_v2_mount(unified) && strlen(unified) < sizeof(root_path)) {
+        memcpy(root_path, unified, strlen(unified) + 1);
+        LOG_DEBUG("hybrid cgroup layout, using %s", unified);
+        return 1;
+    }
+    return 0;
 }
 
 /* Write a value into a cgroup control file.
@@ -72,7 +89,7 @@ static int enable_controllers(const char *dir)
 
 int cgroup_create(mcr_cgroup_t *cg, const char *name)
 {
-    char parent[256];
+    char parent[300];
 
     memset(cg, 0, sizeof(*cg));
 
