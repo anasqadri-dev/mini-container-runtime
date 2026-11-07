@@ -22,7 +22,7 @@ endif()
 
 # Unit tests (run with: ctest --test-dir build --output-on-failure)
 enable_testing()
-foreach(t test_cli test_util)
+foreach(t test_cli test_util test_cgroup)
     if(EXISTS ${CMAKE_SOURCE_DIR}/tests/${t}.c)
         add_executable(${t} tests/${t}.c)
         target_link_libraries(${t} mcr_core)
