@@ -74,22 +74,31 @@ static int cg_write(const char *dir, const char *file, const char *value)
     return 0;
 }
 
-static int enable_controllers(const char *dir)
+/* Hand the controllers we may need down to the children of <dir>.
+ *
+ * All of them are best effort: each limit only needs its own controller, so
+ * a machine without "pids" must still be able to run --cpus. If a limit is
+ * requested and its controller is missing, the matching cgroup_set_* call
+ * fails with an explanation. Writing one controller at a time matters: a
+ * single unavailable one would otherwise make the kernel reject the line. */
+static void enable_controllers(const char *dir)
 {
-    /* One at a time: a single unavailable controller would otherwise make the
-     * kernel reject the whole line. */
-    int rc = 0;
+    static const char *const wanted[] = {"+cpu", "+memory", "+pids"};
 
-    /* cpu is optional: only --cpus needs it, so a machine without it must
-     * still be able to run containers with --memory or --pids. cgroup_set_cpu
-     * reports the problem if it is really needed. */
-    (void)cg_write(dir, "cgroup.subtree_control", "+cpu");
+    for (size_t i = 0; i < sizeof(wanted) / sizeof(wanted[0]); i++) {
+        if (cg_write(dir, "cgroup.subtree_control", wanted[i]) < 0)
+            LOG_DEBUG("cannot enable %s in %s: %s", wanted[i], dir, strerror(errno));
+    }
+}
 
-    if (cg_write(dir, "cgroup.subtree_control", "+memory") < 0 && errno != EBUSY)
-        rc = -1;
-    if (cg_write(dir, "cgroup.subtree_control", "+pids") < 0 && errno != EBUSY)
-        rc = -1;
-    return rc;
+/* Explain why writing a limit failed, with a hint for the usual cause. */
+static void limit_error(const char *what, const char *controller)
+{
+    if (errno == ENOENT)
+        LOG_ERR("cannot set %s limit: the cgroups v2 %s controller is not available "
+                "(see %s/cgroup.controllers)", what, controller, root_path);
+    else
+        LOG_ERR("cannot set %s limit: %s", what, strerror(errno));
 }
 
 int cgroup_create(mcr_cgroup_t *cg, const char *name)
@@ -106,14 +115,8 @@ int cgroup_create(mcr_cgroup_t *cg, const char *name)
 
     /* children of the root group can only get controllers if the root hands
      * them down first; failure is not fatal because they may already be on */
-    (void)cg_write(root_path, "cgroup.subtree_control", "+cpu");
-    (void)cg_write(root_path, "cgroup.subtree_control", "+memory");
-    (void)cg_write(root_path, "cgroup.subtree_control", "+pids");
-
-    if (enable_controllers(parent) < 0) {
-        LOG_ERR("cannot enable memory/pids controllers in %s: %s", parent, strerror(errno));
-        return -1;
-    }
+    enable_controllers(root_path);
+    enable_controllers(parent);
 
     int n = snprintf(cg->path, sizeof(cg->path), "%s/%s", parent, name);
     if (n < 0 || (size_t)n >= sizeof(cg->path)) {
@@ -136,7 +139,7 @@ int cgroup_set_memory(const mcr_cgroup_t *cg, long long bytes)
     snprintf(val, sizeof(val), "%lld", bytes);
 
     if (cg_write(cg->path, "memory.max", val) < 0) {
-        LOG_ERR("cannot set memory limit: %s", strerror(errno));
+        limit_error("memory", "memory");
         return -1;
     }
 
@@ -162,11 +165,7 @@ int cgroup_set_cpu(const mcr_cgroup_t *cg, long millicores)
     snprintf(val, sizeof(val), "%ld %d", quota, MCR_CPU_PERIOD_US);
 
     if (cg_write(cg->path, "cpu.max", val) < 0) {
-        if (errno == ENOENT)
-            LOG_ERR("cannot set cpu limit: the cgroups v2 cpu controller is not available "
-                    "(see %s/cgroup.controllers)", root_path);
-        else
-            LOG_ERR("cannot set cpu limit: %s", strerror(errno));
+        limit_error("cpu", "cpu");
         return -1;
     }
     return 0;
@@ -178,7 +177,7 @@ int cgroup_set_pids(const mcr_cgroup_t *cg, long max)
     snprintf(val, sizeof(val), "%ld", max);
 
     if (cg_write(cg->path, "pids.max", val) < 0) {
-        LOG_ERR("cannot set process limit: %s", strerror(errno));
+        limit_error("process", "pids");
         return -1;
     }
     return 0;
