@@ -206,8 +206,23 @@ static int parse_id_command(int argc, char **argv, mcr_options_t *opts,
             break;
         }
         case 'f':
-            opts->force = 1;
+            /* rm --force and logs --follow share the short option */
+            if (opts->command == CMD_LOGS)
+                opts->follow = 1;
+            else
+                opts->force = 1;
             break;
+        case 'n': {
+            char *end = NULL;
+            errno = 0;
+            long n = strtol(optarg, &end, 10);
+            if (errno != 0 || *end != '\0' || end == optarg || n < 0 || n > 100000000) {
+                set_err(err, errlen, "invalid line count '%s' (a number, 0 or more)", optarg);
+                return -1;
+            }
+            opts->tail_lines = n;
+            break;
+        }
         case 'v':
             opts->verbose = 1;
             break;
@@ -298,6 +313,15 @@ int cli_parse(int argc, char **argv, mcr_options_t *opts, char *err, size_t errl
         opts->stop_timeout = MCR_DEFAULT_STOP_TIMEOUT;
         return parse_id_command(argc - 1, argv + 1, opts, "+ft:vh", lo, err, errlen);
     }
+    if (strcmp(sub, "logs") == 0) {
+        static const struct option lo[] = {
+            {"follow", no_argument, NULL, 'f'}, {"tail", required_argument, NULL, 'n'},
+            {"verbose", no_argument, NULL, 'v'}, {"help", no_argument, NULL, 'h'},
+            {NULL, 0, NULL, 0}};
+        opts->command = CMD_LOGS;
+        opts->tail_lines = -1;
+        return parse_id_command(argc - 1, argv + 1, opts, "+fn:vh", lo, err, errlen);
+    }
     if (strcmp(sub, "help") == 0 || strcmp(sub, "--help") == 0 || strcmp(sub, "-h") == 0) {
         opts->command = CMD_HELP;
         return 0;
@@ -319,8 +343,9 @@ void cli_print_usage(void)
          "  mcr run [options] [--] <command> [args...]   start a container\n"
          "  mcr ps                                       list containers\n"
          "  mcr inspect <id>                             show details of a container\n"
+         "  mcr logs [-f] [-n lines] <id>                show a container's output\n"
          "  mcr stop [-t seconds] <id>                   stop a running container\n"
-         "  mcr rm [-f] [-t seconds] <id>               remove a stopped container\n"
+         "  mcr rm [-f] [-t seconds] <id>                remove a stopped container\n"
          "  mcr help | version\n"
          "\n"
          "Options for run:\n"
@@ -337,6 +362,11 @@ void cli_print_usage(void)
          "Options for stop / rm:\n"
          "  -t, --time <seconds>   wait this long after SIGTERM before SIGKILL (default 10)\n"
          "  -f, --force            rm: stop the container first if it is still running\n"
+         "\n"
+         "Options for logs:\n"
+         "  -f, --follow           keep printing new output until the container stops\n"
+         "  -n, --tail <lines>     only show the last <lines> lines\n"
+         "                         (output is kept for containers started with --detach)\n"
          "\n"
          "An <id> may be shortened to any unique prefix.\n"
          "\n"

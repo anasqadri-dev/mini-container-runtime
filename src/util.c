@@ -84,3 +84,46 @@ int mkdir_p(const char *path, unsigned int mode)
         return -1;
     return 0;
 }
+
+long file_tail_offset(int fd, long lines)
+{
+    off_t size = lseek(fd, 0, SEEK_END);
+    if (size < 0)
+        return -1;
+    if (lines <= 0 || size == 0)
+        return (long)size;
+
+    char buf[4096];
+    off_t pos = size;
+    long seen = 0;
+
+    while (pos > 0) {
+        size_t chunk = pos > (off_t)sizeof(buf) ? sizeof(buf) : (size_t)pos;
+        pos -= (off_t)chunk;
+
+        size_t got = 0;
+        while (got < chunk) {
+            ssize_t n = pread(fd, buf + got, chunk - got, pos + (off_t)got);
+            if (n < 0) {
+                if (errno == EINTR)
+                    continue;
+                return -1;
+            }
+            if (n == 0)
+                return -1;   /* the file shrank while we were reading it */
+            got += (size_t)n;
+        }
+
+        for (size_t i = chunk; i > 0; i--) {
+            off_t idx = pos + (off_t)i - 1;
+
+            if (buf[i - 1] != '\n')
+                continue;
+            if (idx == size - 1)
+                continue;    /* the newline that ends the last line is not a separator */
+            if (++seen == lines)
+                return (long)(idx + 1);
+        }
+    }
+    return 0;
+}

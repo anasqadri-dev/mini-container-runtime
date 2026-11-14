@@ -21,7 +21,7 @@ make test
 | Test          | Covers                                                          |
 | ------------- | --------------------------------------------------------------- |
 | `test_cli`    | `parse_size`, every option, `--` handling, error cases          |
-| `test_util`   | `write_file`, `read_file`, `mkdir_p`                            |
+| `test_util`   | `write_file`, `read_file`, `mkdir_p`, `file_tail_offset` (last N lines, with and without a final newline, blank lines, a file bigger than the read buffer) |
 | `test_state`  | Container records: ids, save/load round trip, prefix lookup, listing, removal, stale-record detection, rejection of malicious ids |
 | `test_cgroup` | Which values are written to which control files, using a fake cgroup directory in `/tmp` |
 
@@ -44,7 +44,7 @@ the one in `MCR_TEST_ROOTFS`) and checks:
 - hostname isolation, PID 1, the `/proc` process count, no mount leaks
 - the rootfs is visible, host directories are not, `/tmp` and `/dev` work
 - exit statuses (`7`, `125`, `127`) and signal handling
-- the full lifecycle: `run`, `ps`, `inspect`, `stop` (graceful and forced),
+- the full lifecycle: `run`, `ps`, `inspect`, `logs` (plain, `--tail`, `--follow`), `stop` (graceful and forced),
   `rm`, `rm -f`, `run --rm`, and recovery when the supervisor is killed
 - `--pids` stops a fork bomb, `--memory` kills a program that allocates
   too much, and `--cpus` writes the right `cpu.max` and throttles a busy loop

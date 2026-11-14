@@ -33,7 +33,7 @@ The project demonstrates concepts behind modern container technologies such as D
 - [x] CPU limits using cgroups v2.
 - [x] Process count limits using cgroups v2.
 - [x] Process information through procfs.
-- [x] Container lifecycle management and cleanup (`ps`, `inspect`, `stop`, `rm`).
+- [x] Container lifecycle management and cleanup (`ps`, `inspect`, `logs`, `stop`, `rm`).
 
 _Features will be marked complete as they are implemented and tested._
 
@@ -133,6 +133,8 @@ id=$(sudo ./build/mcr run -d --rootfs ./rootfs -- /bin/sleep 300)
 
 sudo ./build/mcr ps               # list containers
 sudo ./build/mcr inspect $id      # details, limits, namespaces, live usage
+sudo ./build/mcr logs $id         # output of a detached container
+sudo ./build/mcr logs -f $id      # keep following it until it exits
 sudo ./build/mcr stop $id         # SIGTERM, then SIGKILL after 10 seconds
 sudo ./build/mcr rm $id           # delete the record of a stopped container
 ```
@@ -161,6 +163,7 @@ Ids can be shortened to any unique prefix (`mcr stop a81`).
 | ---------------------------- | ------------------------------------------------------ |
 | `mcr ps`                     | List containers with id, PID, status and command       |
 | `mcr inspect <id>`           | Show configuration, timestamps, exit code, namespaces  |
+| `mcr logs [-f] [-n N] <id>`  | Show a detached container's output (`-f` follows, `-n` shows the last N lines) |
 | `mcr stop [-t secs] <id>`    | SIGTERM, then SIGKILL after the timeout (default 10)   |
 | `mcr rm [-f] [-t secs] <id>` | Remove a stopped container (`-f` stops it first)       |
 

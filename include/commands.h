@@ -8,6 +8,7 @@
 
 int cmd_ps(const mcr_options_t *opts);       /* list containers                */
 int cmd_inspect(const mcr_options_t *opts);  /* show details of one container  */
+int cmd_logs(const mcr_options_t *opts);     /* show / follow output            */
 int cmd_stop(const mcr_options_t *opts);     /* SIGTERM, then SIGKILL          */
 int cmd_rm(const mcr_options_t *opts);       /* delete a stopped container     */
 

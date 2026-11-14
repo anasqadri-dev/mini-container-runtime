@@ -25,6 +25,13 @@ int write_file(const char *path, const char *data);
  * Returns number of bytes read, or -1 on error. */
 int read_file(const char *path, char *buf, size_t buflen);
 
+/* Byte offset at which the last <lines> lines of the open file begin, found by
+ * scanning backwards from the end, so even a huge log costs almost nothing.
+ * A final line without a trailing newline counts as a line. Returns 0 when
+ * the file has fewer lines than asked for (print everything), the file size
+ * when lines is 0 (print nothing), and -1 on error. */
+long file_tail_offset(int fd, long lines);
+
 /* mkdir -p. Returns 0 on success, -1 on error. */
 int mkdir_p(const char *path, unsigned int mode);
 

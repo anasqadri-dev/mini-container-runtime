@@ -4,6 +4,7 @@
 #include "util.h"
 
 #include <errno.h>
+#include <fcntl.h>
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -197,6 +198,101 @@ int cmd_inspect(const mcr_options_t *opts)
         print_namespaces(st.pid);
     }
     return 0;
+}
+
+/* ---- logs -------------------------------------------------------------- */
+
+#define LOG_POLL_NS (100 * 1000 * 1000)   /* look for new output every 100 ms */
+
+/* Copy everything from the current position of fd to stdout.
+ * Returns the number of bytes copied, or -1 on a read error. */
+static long drain(int fd)
+{
+    char buf[4096];
+    long total = 0;
+
+    for (;;) {
+        ssize_t n = read(fd, buf, sizeof(buf));
+        if (n < 0) {
+            if (errno == EINTR)
+                continue;
+            return -1;
+        }
+        if (n == 0)
+            return total;
+        if (fwrite(buf, 1, (size_t)n, stdout) != (size_t)n)
+            return -1;
+        total += n;
+    }
+}
+
+int cmd_logs(const mcr_options_t *opts)
+{
+    mcr_state_t st;
+    char path[600];
+
+    if (lookup(opts->id, &st) < 0)
+        return 1;
+
+    state_path(st.id, "output.log", path, sizeof(path));
+    int fd = open(path, O_RDONLY | O_CLOEXEC);
+    if (fd < 0) {
+        if (errno == ENOENT)
+            LOG_ERR("no output saved for container %s: only containers started with "
+                    "'run -d' keep their output (foreground ones print to the terminal)", st.id);
+        else
+            LOG_ERR("cannot open %s: %s", path, strerror(errno));
+        return 1;
+    }
+
+    /* --tail N: skip to the start of the last N lines */
+    long start = 0;
+    if (opts->tail_lines >= 0) {
+        start = file_tail_offset(fd, opts->tail_lines);
+        if (start < 0) {
+            LOG_ERR("cannot read %s: %s", path, strerror(errno));
+            close(fd);
+            return 1;
+        }
+    }
+    if (lseek(fd, start, SEEK_SET) < 0) {
+        LOG_ERR("cannot read %s: %s", path, strerror(errno));
+        close(fd);
+        return 1;
+    }
+
+    int rc = 0;
+    if (drain(fd) < 0) {
+        LOG_ERR("cannot read %s: %s", path, strerror(errno));
+        rc = 1;
+    }
+    fflush(stdout);
+
+    if (opts->follow && rc == 0) {
+        struct timespec pause = { .tv_sec = 0, .tv_nsec = LOG_POLL_NS };
+
+        for (;;) {
+            /* Decide whether the container is still running BEFORE the last
+             * read: anything it wrote up to its exit is then picked up by that
+             * read, and nothing is lost between the check and the exit. */
+            mcr_state_t now;
+            int running = state_load(st.id, &now) == 0 && (state_refresh(&now), now.status == STATUS_RUNNING);
+
+            if (drain(fd) < 0) {
+                LOG_ERR("cannot read %s: %s", path, strerror(errno));
+                rc = 1;
+                break;
+            }
+            fflush(stdout);
+
+            if (!running)
+                break;
+            nanosleep(&pause, NULL);
+        }
+    }
+
+    close(fd);
+    return rc;
 }
 
 /* ---- stop -------------------------------------------------------------- */

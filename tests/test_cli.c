@@ -282,6 +282,51 @@ static void test_run_cpus_option(void)
     CHECK(o.cpu_millicores == 0 && o.cmd_argc == 3);
 }
 
+static void test_logs(void)
+{
+    mcr_options_t o;
+    char err[128];
+
+    char *plain[] = {"mcr", "logs", "a81f", NULL};
+    CHECK(cli_parse(3, plain, &o, err, sizeof(err)) == 0);
+    CHECK(o.command == CMD_LOGS);
+    CHECK_STR(o.id, "a81f");
+    CHECK(o.follow == 0);
+    CHECK(o.tail_lines == -1);      /* default: everything */
+    CHECK(o.force == 0);
+
+    char *follow[] = {"mcr", "logs", "-f", "a81f", NULL};
+    CHECK(cli_parse(4, follow, &o, err, sizeof(err)) == 0);
+    CHECK(o.follow == 1 && o.force == 0);   /* -f means follow here, not force */
+
+    char *longf[] = {"mcr", "logs", "--follow", "--tail", "20", "a81f", NULL};
+    CHECK(cli_parse(6, longf, &o, err, sizeof(err)) == 0);
+    CHECK(o.follow == 1 && o.tail_lines == 20);
+
+    char *shortn[] = {"mcr", "logs", "-n", "0", "a81f", NULL};
+    CHECK(cli_parse(5, shortn, &o, err, sizeof(err)) == 0 && o.tail_lines == 0);
+
+    char *badn[] = {"mcr", "logs", "-n", "many", "a81f", NULL};
+    CHECK(cli_parse(5, badn, &o, err, sizeof(err)) < 0);
+
+    char *negn[] = {"mcr", "logs", "-n", "-3", "a81f", NULL};
+    CHECK(cli_parse(5, negn, &o, err, sizeof(err)) < 0);
+
+    char *noid[] = {"mcr", "logs", "-f", NULL};
+    CHECK(cli_parse(3, noid, &o, err, sizeof(err)) < 0);
+
+    char *extra[] = {"mcr", "logs", "a81f", "b2", NULL};
+    CHECK(cli_parse(4, extra, &o, err, sizeof(err)) < 0);
+
+    /* -f still means force for rm */
+    char *rm[] = {"mcr", "rm", "-f", "a81f", NULL};
+    CHECK(cli_parse(4, rm, &o, err, sizeof(err)) == 0 && o.force == 1 && o.follow == 0);
+
+    /* -n is not an option of stop or inspect */
+    char *stop[] = {"mcr", "stop", "-n", "3", "a81f", NULL};
+    CHECK(cli_parse(5, stop, &o, err, sizeof(err)) < 0);
+}
+
 int main(void)
 {
     test_parse_size();
@@ -298,5 +343,6 @@ int main(void)
     test_rm();
     test_parse_cpus();
     test_run_cpus_option();
+    test_logs();
     TEST_SUMMARY();
 }
