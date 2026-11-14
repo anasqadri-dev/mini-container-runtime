@@ -1,6 +1,6 @@
 # Verifying cgroups v2 limits
 
-This document describes how we verify the `--memory` and `--pids` limits.
+This document describes how we verify the `--memory`, `--pids` and `--cpus` limits.
 
 ## Environment
 - OS / kernel: (fill in from `uname -a`)
@@ -24,8 +24,23 @@ Command:
 Expected: some forks fail with "Resource temporarily unavailable".
 Result: (fill in)
 
-## Test 3: no limit (control)
-Run the same commands without `--memory` / `--pids` and compare.
+## Test 3: CPU limit
+Command (start a busy loop limited to 0.2 CPU, then look at the cgroup):
+    id=$(sudo ./build/mcr run -d --cpus 0.2 -- /bin/sh -c 'while :; do :; done')
+    sleep 3
+    sudo cat /sys/fs/cgroup/mcr/mcr-*/cpu.max
+    sudo cat /sys/fs/cgroup/mcr/mcr-*/cpu.stat
+    sudo ./build/mcr rm -f $id
+
+Expected: `cpu.max` is `20000 100000`, `usage_usec` is far below 3000000
+(about 600000 after 3 seconds) and `nr_throttled` is greater than 0.
+Using `top` in another terminal, the process stays near 20% of one core.
+Result: (fill in)
+
+## Test 4: no limit (control)
+Run the same commands without `--memory` / `--pids` / `--cpus` and compare.
 
 ## Conclusion
 (State whether each feature works, then update the README checkboxes.)
+
+The same checks run automatically in `sudo tests/integration.sh`.

@@ -46,8 +46,8 @@ the one in `MCR_TEST_ROOTFS`) and checks:
 - exit statuses (`7`, `125`, `127`) and signal handling
 - the full lifecycle: `run`, `ps`, `inspect`, `stop` (graceful and forced),
   `rm`, `rm -f`, `run --rm`, and recovery when the supervisor is killed
-- `--pids` stops a fork bomb and `--memory` kills a program that allocates
-  too much
+- `--pids` stops a fork bomb, `--memory` kills a program that allocates
+  too much, and `--cpus` writes the right `cpu.max` and throttles a busy loop
 - the cgroup directory is removed afterwards
 
 Checks that need the cgroups v2 `memory` or `pids` controller are reported as
