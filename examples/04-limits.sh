@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Resource limits with cgroups v2.
-# Needs a machine where cgroups v2 has the memory and pids controllers
+# Needs a machine where cgroups v2 has the memory, pids and cpu controllers
 # (the default on current Ubuntu). Check with:  cat /sys/fs/cgroup/cgroup.controllers
 # Run from the repository root after building:  sudo examples/04-limits.sh
 
@@ -14,3 +14,11 @@ echo
 echo "--- memory limit: 32M allowed, we try to hold about 100M"
 "$MCR" run --memory 32M -- sh -c 'x=$(head -c 100000000 /dev/zero | tr "\0" a); echo "allocated ${#x} bytes"'
 echo "exit status: $? (137 means the kernel killed it for using too much memory)"
+
+echo
+echo "--- cpu limit: a busy loop limited to 0.2 CPU for 3 seconds"
+ID=$("$MCR" run -d --cpus 0.2 -- sh -c 'while :; do :; done')
+sleep 3
+"$MCR" inspect "$ID" | grep -E "CPU limit|Status"
+echo "(watch it with 'top' in another terminal: it stays near 20% of one core)"
+"$MCR" rm -f -t 1 "$ID" > /dev/null

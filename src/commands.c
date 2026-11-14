@@ -171,6 +171,11 @@ int cmd_inspect(const mcr_options_t *opts)
     else
         printf("Process limit: none\n");
 
+    if (st.cpu_millicores > 0)
+        printf("CPU limit:     %.3g (1 = one full CPU)\n", st.cpu_millicores / 1000.0);
+    else
+        printf("CPU limit:     none\n");
+
     format_time(st.created, when, sizeof(when));
     printf("Created:       %s\n", when);
     format_time(st.started, when, sizeof(when));

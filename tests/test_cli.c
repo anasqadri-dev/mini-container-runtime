@@ -221,6 +221,67 @@ static void test_rm(void)
     CHECK(cli_parse(4, unknown, &o, err, sizeof(err)) < 0);
 }
 
+static void test_parse_cpus(void)
+{
+    long v = 0;
+
+    CHECK(parse_cpus("1", &v) == 0 && v == 1000);
+    CHECK(parse_cpus("2", &v) == 0 && v == 2000);
+    CHECK(parse_cpus("0.5", &v) == 0 && v == 500);
+    CHECK(parse_cpus("0.25", &v) == 0 && v == 250);
+    CHECK(parse_cpus("1.5", &v) == 0 && v == 1500);
+    CHECK(parse_cpus("1.125", &v) == 0 && v == 1125);
+    CHECK(parse_cpus("0.01", &v) == 0 && v == 10);       /* smallest allowed */
+    CHECK(parse_cpus("1024", &v) == 0 && v == 1024000);  /* largest allowed */
+    CHECK(parse_cpus("00.5", &v) == 0 && v == 500);
+
+    /* bad input */
+    CHECK(parse_cpus(NULL, &v) < 0);
+    CHECK(parse_cpus("", &v) < 0);
+    CHECK(parse_cpus("0", &v) < 0);
+    CHECK(parse_cpus("0.0", &v) < 0);
+    CHECK(parse_cpus("0.009", &v) < 0);     /* below the kernel's minimum quota */
+    CHECK(parse_cpus("0.001", &v) < 0);
+    CHECK(parse_cpus("1025", &v) < 0);
+    CHECK(parse_cpus("99999999999999999999", &v) < 0);
+    CHECK(parse_cpus("-1", &v) < 0);
+    CHECK(parse_cpus("+1", &v) < 0);
+    CHECK(parse_cpus(".5", &v) < 0);
+    CHECK(parse_cpus("1.", &v) < 0);
+    CHECK(parse_cpus("1.2345", &v) < 0);    /* more than three decimals */
+    CHECK(parse_cpus("1e3", &v) < 0);
+    CHECK(parse_cpus("2cpus", &v) < 0);
+    CHECK(parse_cpus("1,5", &v) < 0);
+}
+
+static void test_run_cpus_option(void)
+{
+    mcr_options_t o;
+    char err[128];
+
+    char *argv[] = {"mcr", "run", "--cpus", "0.5", "-m", "64M", "/bin/sh", NULL};
+    CHECK(cli_parse(7, argv, &o, err, sizeof(err)) == 0);
+    CHECK(o.cpu_millicores == 500);
+    CHECK(o.memory_bytes == 64LL * 1024 * 1024);
+
+    char *shortf[] = {"mcr", "run", "-c", "2", "/bin/sh", NULL};
+    CHECK(cli_parse(5, shortf, &o, err, sizeof(err)) == 0 && o.cpu_millicores == 2000);
+
+    char *none[] = {"mcr", "run", "/bin/sh", NULL};
+    CHECK(cli_parse(3, none, &o, err, sizeof(err)) == 0 && o.cpu_millicores == 0);
+
+    char *bad[] = {"mcr", "run", "--cpus", "lots", "/bin/sh", NULL};
+    CHECK(cli_parse(5, bad, &o, err, sizeof(err)) < 0);
+
+    char *zero[] = {"mcr", "run", "--cpus", "0", "/bin/sh", NULL};
+    CHECK(cli_parse(5, zero, &o, err, sizeof(err)) < 0);
+
+    /* an option after the command belongs to the command, not to mcr */
+    char *after[] = {"mcr", "run", "/bin/sh", "--cpus", "9", NULL};
+    CHECK(cli_parse(5, after, &o, err, sizeof(err)) == 0);
+    CHECK(o.cpu_millicores == 0 && o.cmd_argc == 3);
+}
+
 int main(void)
 {
     test_parse_size();
@@ -235,5 +296,7 @@ int main(void)
     test_inspect();
     test_stop();
     test_rm();
+    test_parse_cpus();
+    test_run_cpus_option();
     TEST_SUMMARY();
 }
