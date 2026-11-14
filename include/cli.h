@@ -25,6 +25,7 @@ typedef struct {
     const char *hostname;     /* hostname inside the container */
     long long   memory_bytes; /* 0 = unlimited */
     long        pids_max;     /* 0 = unlimited */
+    long        cpu_millicores; /* 1000 = one full CPU, 0 = unlimited */
     int         verbose;
     int         detach;       /* run: start in the background and print the id */
     int         auto_remove;  /* run: delete the container's metadata on exit */
@@ -42,6 +43,11 @@ typedef struct {
  * Suffixes are powers of 1024 and case-insensitive.
  * Returns 0 on success and stores the byte count in *out, -1 on bad input. */
 int parse_size(const char *text, long long *out);
+
+/* Parse a CPU amount such as "0.5", "2" or "1.25" into millicores
+ * (1000 = one CPU). At most three decimals; the range is 0.01 to 1024.
+ * Returns 0 on success and stores the value in *out, -1 on bad input. */
+int parse_cpus(const char *text, long *out);
 
 /* Parse command line arguments.
  * On failure returns -1 and writes a short message into err. */

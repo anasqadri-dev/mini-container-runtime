@@ -43,6 +43,46 @@ int parse_size(const char *text, long long *out)
     return 0;
 }
 
+int parse_cpus(const char *text, long *out)
+{
+    if (!text || !isdigit((unsigned char)text[0]))
+        return -1;
+
+    long whole = 0, frac = 0;
+    const char *p = text;
+
+    while (isdigit((unsigned char)*p)) {
+        whole = whole * 10 + (*p - '0');
+        if (whole > 1024)
+            return -1;
+        p++;
+    }
+
+    if (*p == '.') {
+        p++;
+        int digits = 0;
+        while (isdigit((unsigned char)*p)) {
+            if (++digits > 3)
+                return -1;            /* millicore precision is enough */
+            frac = frac * 10 + (*p - '0');
+            p++;
+        }
+        if (digits == 0)
+            return -1;                /* "1." is not a number */
+        for (; digits < 3; digits++)
+            frac *= 10;
+    }
+    if (*p != '\0')
+        return -1;
+
+    long millis = whole * 1000 + frac;
+    if (millis < 10 || millis > 1024 * 1000)
+        return -1;                    /* kernel minimum quota is 1 ms per 100 ms period */
+
+    *out = millis;
+    return 0;
+}
+
 static void set_err(char *err, size_t errlen, const char *fmt, const char *arg)
 {
     if (err && errlen)
@@ -56,6 +96,7 @@ static int parse_run(int argc, char **argv, mcr_options_t *opts, char *err, size
         {"hostname", required_argument, NULL, 'n'},
         {"memory",   required_argument, NULL, 'm'},
         {"pids",     required_argument, NULL, 'p'},
+        {"cpus",     required_argument, NULL, 'c'},
         {"verbose",  no_argument,       NULL, 'v'},
         {"detach",   no_argument,       NULL, 'd'},
         {"rm",       no_argument,       NULL, 'R'},
@@ -69,7 +110,7 @@ static int parse_run(int argc, char **argv, mcr_options_t *opts, char *err, size
     opterr = 0;
 
     int c;
-    while ((c = getopt_long(argc, argv, "+r:n:m:p:vdh", long_opts, NULL)) != -1) {
+    while ((c = getopt_long(argc, argv, "+r:n:m:p:c:vdh", long_opts, NULL)) != -1) {
         switch (c) {
         case 'r':
             opts->rootfs = optarg;
@@ -98,6 +139,12 @@ static int parse_run(int argc, char **argv, mcr_options_t *opts, char *err, size
             opts->pids_max = n;
             break;
         }
+        case 'c':
+            if (parse_cpus(optarg, &opts->cpu_millicores) < 0) {
+                set_err(err, errlen, "invalid cpu limit '%s' (try 0.5 or 2, range 0.01-1024)", optarg);
+                return -1;
+            }
+            break;
         case 'v':
             opts->verbose = 1;
             break;
@@ -281,6 +328,7 @@ void cli_print_usage(void)
          "  -n, --hostname <name>  hostname inside the container (default: container)\n"
          "  -m, --memory <size>    memory limit, e.g. 64M or 1G (cgroups v2)\n"
          "  -p, --pids <n>         maximum number of processes (cgroups v2)\n"
+         "  -c, --cpus <n>         CPU limit, e.g. 0.5 for half a CPU or 2 (cgroups v2)\n"
          "  -d, --detach           run in the background and print the container id\n"
          "      --rm               remove the container's record when it exits\n"
          "  -v, --verbose          print debug output\n"
@@ -294,7 +342,7 @@ void cli_print_usage(void)
          "\n"
          "Examples:\n"
          "  sudo mcr run --hostname demo -- /bin/sh\n"
-         "  sudo mcr run -d --rootfs ./rootfs --memory 64M --pids 32 -- /bin/sleep 300\n"
+         "  sudo mcr run -d --rootfs ./rootfs --memory 64M --pids 32 --cpus 0.5 -- /bin/sleep 300\n"
          "  sudo mcr ps\n"
          "  sudo mcr stop a81f && sudo mcr rm a81f\n"
          "\n"
