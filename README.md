@@ -30,6 +30,7 @@ The project demonstrates concepts behind modern container technologies such as D
 - [x] Mount namespace isolation.
 - [x] Separate filesystem environment.
 - [ ] Memory resource limits using cgroups v2. _(implemented, still to be verified on a machine with the cgroups v2 memory controller)_
+- [ ] CPU limits using cgroups v2. _(implemented, still to be verified on a machine with the cgroups v2 cpu controller)_
 - [ ] Process count limits using cgroups v2. _(implemented, still to be verified on a machine with the cgroups v2 pids controller)_
 - [x] Process information through procfs.
 - [x] Container lifecycle management and cleanup (`ps`, `inspect`, `stop`, `rm`).
@@ -119,7 +120,7 @@ scripts/make-rootfs.sh ./rootfs
 sudo ./build/mcr run --rootfs ./rootfs -- /bin/sh
 
 # with resource limits (cgroups v2)
-sudo ./build/mcr run --rootfs ./rootfs --memory 64M --pids 32 -- /bin/sh
+sudo ./build/mcr run --rootfs ./rootfs --memory 64M --pids 32 --cpus 0.5 -- /bin/sh
 ```
 
 ### 5. Manage containers
@@ -151,6 +152,7 @@ Ids can be shortened to any unique prefix (`mcr stop a81`).
 | `-n, --hostname <name>`| Hostname inside the container (default `container`) |
 | `-m, --memory <size>`  | Memory limit, e.g. `64M`, `1G`                      |
 | `-p, --pids <n>`       | Maximum number of processes                         |
+| `-c, --cpus <n>`       | CPU limit, e.g. `0.5` (half a CPU) or `2`           |
 | `-d, --detach`         | Run in the background and print the container id    |
 | `--rm`                 | Remove the container's record when it exits         |
 | `-v, --verbose`        | Debug output                                        |
