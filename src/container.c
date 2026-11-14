@@ -125,6 +125,8 @@ static int setup_cgroup(mcr_cgroup_t *cg, const mcr_options_t *opts, pid_t pid)
         return -1;
     if (opts->pids_max > 0 && cgroup_set_pids(cg, opts->pids_max) < 0)
         return -1;
+    if (opts->cpu_millicores > 0 && cgroup_set_cpu(cg, opts->cpu_millicores) < 0)
+        return -1;
     return cgroup_add_pid(cg, pid);
 }
 
@@ -175,7 +177,7 @@ static int run_container(const mcr_options_t *opts, mcr_state_t *st)
 
     int result = EXIT_RUNTIME_ERROR;
     mcr_cgroup_t cg = { .created = 0 };
-    int limits = opts->memory_bytes > 0 || opts->pids_max > 0;
+    int limits = opts->memory_bytes > 0 || opts->pids_max > 0 || opts->cpu_millicores > 0;
     int aborted = 0;
 
     if (limits && setup_cgroup(&cg, opts, pid) < 0) {
@@ -280,6 +282,7 @@ int container_run(const mcr_options_t *opts)
         snprintf(st.rootfs, sizeof(st.rootfs), "%s", opts->rootfs);
     st.memory_bytes = opts->memory_bytes;
     st.pids_max = opts->pids_max;
+    st.cpu_millicores = opts->cpu_millicores;
     st.runtime_pid = getpid();
     save_state(&st);                       /* state: CREATED */
     LOG_DEBUG("container id %s", st.id);
