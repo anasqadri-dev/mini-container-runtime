@@ -136,14 +136,27 @@ escape to.
 
 ```text
 /sys/fs/cgroup/
-└── mcr/                       controllers +memory +pids enabled here
+└── mcr/                       controllers +cpu +memory +pids enabled here
     └── mcr-<mcr pid>/         one group per container
         ├── memory.max         from --memory
         ├── memory.swap.max    0, so swap cannot be used to dodge the limit
         ├── memory.oom.group   1, the OOM killer takes down the whole group
         ├── pids.max           from --pids
+        ├── cpu.max            from --cpus, "<quota> <period>" in microseconds
         └── cgroup.procs       the container's PID 1 is written here
 ```
+
+`--cpus 0.5` becomes `cpu.max = "50000 100000"`: the container may run for
+50 ms in every 100 ms period, which is half a CPU. `--cpus 2` becomes
+`"200000 100000"`. The period is fixed at 100 ms and the smallest allowed
+value is `0.01` (1 ms per period), the kernel's minimum. CPU limits are
+stored in the container record as millicores (1000 = one CPU), which avoids
+floating point.
+
+Each limit only needs its own controller: the runtime asks for `cpu`,
+`memory` and `pids` but treats all three as optional, and a missing one is
+reported only when that limit is requested, for example *"the cgroups v2 cpu
+controller is not available"*.
 
 The group is removed after the container exits. `rmdir` can briefly fail
 with `EBUSY` while the kernel finishes tearing down the processes, so the
@@ -179,7 +192,6 @@ signal. A second signal is therefore turned into `SIGKILL`.
 - No user namespace; the container runs as real root, so it is **not** a
   security boundary. Use it for learning, not for untrusted code.
 - No capability dropping or seccomp filtering.
-- No CPU limit (`cpu.max`), only memory and process count.
 - No `exec` or `logs` subcommand; the log of a detached container is the file
   `/run/mcr/containers/<id>/output.log`.
 - A container cannot be restarted; start a new one with `run`.
