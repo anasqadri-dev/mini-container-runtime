@@ -141,6 +141,7 @@ int state_save(const mcr_state_t *st)
     fprintf(f, "rootfs=%s\n", st->rootfs);
     fprintf(f, "memory_bytes=%lld\n", st->memory_bytes);
     fprintf(f, "pids_max=%ld\n", st->pids_max);
+    fprintf(f, "cpu_millicores=%ld\n", st->cpu_millicores);
     fprintf(f, "created=%lld\n", (long long)st->created);
     fprintf(f, "started=%lld\n", (long long)st->started);
     fprintf(f, "finished=%lld\n", (long long)st->finished);
@@ -213,6 +214,8 @@ int state_load(const char *id, mcr_state_t *out)
             out->memory_bytes = atoll(val);
         } else if (strcmp(key, "pids_max") == 0) {
             out->pids_max = atol(val);
+        } else if (strcmp(key, "cpu_millicores") == 0) {
+            out->cpu_millicores = atol(val);
         } else if (strcmp(key, "created") == 0) {
             out->created = (time_t)atoll(val);
         } else if (strcmp(key, "started") == 0) {

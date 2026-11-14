@@ -67,6 +67,7 @@ static void test_save_load_roundtrip(void)
     snprintf(st.rootfs, sizeof(st.rootfs), "/srv/rootfs");
     st.memory_bytes = 64LL << 20;
     st.pids_max = 50;
+    st.cpu_millicores = 1500;
     st.started = 1700000005;
 
     CHECK(state_save(&st) == 0);
@@ -82,6 +83,7 @@ static void test_save_load_roundtrip(void)
     CHECK_STR(back.rootfs, "/srv/rootfs");
     CHECK(back.memory_bytes == 64LL << 20);
     CHECK(back.pids_max == 50);
+    CHECK(back.cpu_millicores == 1500);
     CHECK(back.created == 1700000000);
     CHECK(back.started == 1700000005);
 

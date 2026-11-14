@@ -33,6 +33,7 @@ typedef struct {
     char         rootfs[256];
     long long    memory_bytes;
     long         pids_max;
+    long         cpu_millicores; /* 1000 = one CPU, 0 = unlimited */
     time_t       created;
     time_t       started;
     time_t       finished;
