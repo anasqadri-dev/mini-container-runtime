@@ -214,7 +214,34 @@ else
     skp "memory limit" "memory controller not available in cgroup v2"
 fi
 
-if has_ctl memory || has_ctl pids; then
+if has_ctl cpu; then
+    # the limit must reach the kernel as "<quota> <period>"
+    id="$("$MCR" run -d --cpus 0.5 -- sleep 300)"
+    sleep 0.5
+    sup="$(grep '^runtime_pid=' "$MCR_STATE_DIR/$id/state" | cut -d= -f2)"
+    value="$(cat "$cg_root/mcr/mcr-$sup/cpu.max" 2>/dev/null)"
+    [ "$value" = "50000 100000" ] && ok "cpu.max is '50000 100000' for --cpus 0.5" || bad "cpu.max value" "got '$value'"
+    "$MCR" inspect "$id" | grep -q "^CPU limit:     0.5" && ok "inspect shows the CPU limit" || bad "inspect CPU limit"
+    "$MCR" rm -f -t 1 "$id" >/dev/null 2>&1
+
+    # and it must actually throttle: a busy loop limited to 0.2 CPU may use
+    # about 0.6 s of CPU time in 3 s of wall time (allow generous slack)
+    id="$("$MCR" run -d --cpus 0.2 -- sh -c 'while :; do :; done')"
+    sleep 3
+    sup="$(grep '^runtime_pid=' "$MCR_STATE_DIR/$id/state" | cut -d= -f2)"
+    used="$(awk '/^usage_usec/ {print $2}' "$cg_root/mcr/mcr-$sup/cpu.stat" 2>/dev/null)"
+    throttled="$(awk '/^nr_throttled/ {print $2}' "$cg_root/mcr/mcr-$sup/cpu.stat" 2>/dev/null)"
+    "$MCR" rm -f -t 1 "$id" >/dev/null 2>&1
+    if [ -n "$used" ] && [ "$used" -lt 1500000 ] && [ "${throttled:-0}" -gt 0 ]; then
+        ok "cpu limit throttles a busy loop (used $((used / 1000)) ms CPU in 3 s, throttled $throttled times)"
+    else
+        bad "cpu limit not enforced" "usage_usec=$used nr_throttled=$throttled"
+    fi
+else
+    skp "cpu limit" "cpu controller not available in cgroup v2"
+fi
+
+if has_ctl memory || has_ctl pids || has_ctl cpu; then
     left="$(ls "$cg_root/mcr" 2>/dev/null | grep -c '^mcr-')"
     [ "$left" = "0" ] && ok "cgroups are removed after the container exits" || bad "$left leftover cgroups"
 else
