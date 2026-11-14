@@ -11,6 +11,7 @@
  */
 
 #define MCR_CGROUP_DEFAULT_ROOT "/sys/fs/cgroup"
+#define MCR_CPU_PERIOD_US 100000
 
 typedef struct {
     char path[256];   /* absolute path of the container's cgroup directory */
@@ -25,11 +26,17 @@ void cgroup_set_root(const char *root);
 int cgroup_is_v2(void);
 
 /* Create the group <root>/mcr/<name> and enable the memory and pids
- * controllers for it. Returns 0 on success, -1 on error. */
+ * controllers for it (and cpu when the machine has it). Returns 0 on success, -1 on error. */
 int cgroup_create(mcr_cgroup_t *cg, const char *name);
 
 /* memory.max (also disables swap and makes the OOM killer take the whole group) */
 int cgroup_set_memory(const mcr_cgroup_t *cg, long long bytes);
+
+/* cpu.max: allow <millicores>/1000 CPUs of run time (1000 = one full CPU).
+ * Written as "<quota> <period>" with a 100 ms period, so 500 millicores is
+ * "50000 100000". Fails with an explanation if the cpu controller is not
+ * available in this cgroup tree. */
+int cgroup_set_cpu(const mcr_cgroup_t *cg, long millicores);
 
 /* pids.max */
 int cgroup_set_pids(const mcr_cgroup_t *cg, long max);

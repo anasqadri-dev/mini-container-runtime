@@ -80,6 +80,11 @@ static int enable_controllers(const char *dir)
      * kernel reject the whole line. */
     int rc = 0;
 
+    /* cpu is optional: only --cpus needs it, so a machine without it must
+     * still be able to run containers with --memory or --pids. cgroup_set_cpu
+     * reports the problem if it is really needed. */
+    (void)cg_write(dir, "cgroup.subtree_control", "+cpu");
+
     if (cg_write(dir, "cgroup.subtree_control", "+memory") < 0 && errno != EBUSY)
         rc = -1;
     if (cg_write(dir, "cgroup.subtree_control", "+pids") < 0 && errno != EBUSY)
@@ -101,6 +106,7 @@ int cgroup_create(mcr_cgroup_t *cg, const char *name)
 
     /* children of the root group can only get controllers if the root hands
      * them down first; failure is not fatal because they may already be on */
+    (void)cg_write(root_path, "cgroup.subtree_control", "+cpu");
     (void)cg_write(root_path, "cgroup.subtree_control", "+memory");
     (void)cg_write(root_path, "cgroup.subtree_control", "+pids");
 
@@ -138,6 +144,31 @@ int cgroup_set_memory(const mcr_cgroup_t *cg, long long bytes)
      * swapping, and the OOM killer might leave half of the group running. */
     (void)cg_write(cg->path, "memory.swap.max", "0");
     (void)cg_write(cg->path, "memory.oom.group", "1");
+    return 0;
+}
+
+int cgroup_set_cpu(const mcr_cgroup_t *cg, long millicores)
+{
+    char val[48];
+
+    if (millicores < 10) {
+        errno = EINVAL;
+        LOG_ERR("cpu limit too small");
+        return -1;
+    }
+
+    /* quota = run time allowed per period, in microseconds */
+    long quota = millicores * (MCR_CPU_PERIOD_US / 1000);
+    snprintf(val, sizeof(val), "%ld %d", quota, MCR_CPU_PERIOD_US);
+
+    if (cg_write(cg->path, "cpu.max", val) < 0) {
+        if (errno == ENOENT)
+            LOG_ERR("cannot set cpu limit: the cgroups v2 cpu controller is not available "
+                    "(see %s/cgroup.controllers)", root_path);
+        else
+            LOG_ERR("cannot set cpu limit: %s", strerror(errno));
+        return -1;
+    }
     return 0;
 }
 
