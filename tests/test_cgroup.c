@@ -49,6 +49,21 @@ static void test_create_and_limits(void)
     read_value(cg.path, "memory.oom.group", buf, sizeof(buf));
     CHECK_STR(buf, "1");
 
+    CHECK(cgroup_set_cpu(&cg, 500) == 0);
+    read_value(cg.path, "cpu.max", buf, sizeof(buf));
+    CHECK_STR(buf, "50000 100000");
+    CHECK(cgroup_set_cpu(&cg, 2000) == 0);
+    read_value(cg.path, "cpu.max", buf, sizeof(buf));
+    CHECK_STR(buf, "200000 100000");
+    CHECK(cgroup_set_cpu(&cg, 1250) == 0);
+    read_value(cg.path, "cpu.max", buf, sizeof(buf));
+    CHECK_STR(buf, "125000 100000");
+    CHECK(cgroup_set_cpu(&cg, 10) == 0);       /* smallest: 1 ms per 100 ms */
+    read_value(cg.path, "cpu.max", buf, sizeof(buf));
+    CHECK_STR(buf, "1000 100000");
+    CHECK(cgroup_set_cpu(&cg, 9) < 0);         /* below the kernel's minimum */
+    CHECK(cgroup_set_cpu(&cg, 0) < 0);
+
     CHECK(cgroup_set_pids(&cg, 32) == 0);
     read_value(cg.path, "pids.max", buf, sizeof(buf));
     CHECK_STR(buf, "32");
