@@ -29,9 +29,9 @@ The project demonstrates concepts behind modern container technologies such as D
 - [x] Hostname isolation using UTS namespaces.
 - [x] Mount namespace isolation.
 - [x] Separate filesystem environment.
-- [ ] Memory resource limits using cgroups v2. _(implemented, still to be verified on a machine with the cgroups v2 memory controller)_
-- [ ] CPU limits using cgroups v2. _(implemented, still to be verified on a machine with the cgroups v2 cpu controller)_
-- [ ] Process count limits using cgroups v2. _(implemented, still to be verified on a machine with the cgroups v2 pids controller)_
+- [x] Memory resource limits using cgroups v2.
+- [x] CPU limits using cgroups v2.
+- [x] Process count limits using cgroups v2.
 - [x] Process information through procfs.
 - [x] Container lifecycle management and cleanup (`ps`, `inspect`, `stop`, `rm`).
 
