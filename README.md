@@ -184,7 +184,7 @@ Developed by BS Software Engineering students at Sukkur IBA University.
 | ------------------- | ----------- |
 | Muhammad Anas Qadri | 053-24-0016 |
 | Masood Ahmed        | 053-24-0011 |
-| Shaheer Ahmed       | 053-24-0028 |
+| Shaheer Ahmed Siddiqui      | 053-24-0038 |
 
 ## Academic Information
 
