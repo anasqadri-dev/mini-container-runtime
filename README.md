@@ -169,7 +169,8 @@ Ids can be shortened to any unique prefix (`mcr stop a81`).
 
 Everything after the options (optionally after `--`) is the program to run.
 The exit status of `mcr` is the exit status of that program. More examples
-are in the [examples](examples/) folder and the design is explained in
+are in the [examples](examples/) folder, `sudo examples/demo.sh` runs a guided
+live demo (see [docs/demo.md](docs/demo.md)), and the design is explained in
 [docs/architecture.md](docs/architecture.md).
 
 > **Warning:** the container runs as real root and has no network, user or
