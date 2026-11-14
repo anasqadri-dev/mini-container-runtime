@@ -12,7 +12,7 @@ container. There is no daemon and no image format: one process calls
 | `src/cli.c`         | Argument parsing and `parse_size()` (`64M`, `1G`, ...)      |
 | `src/container.c`   | `clone()`, parent/child synchronisation, signals, exit code, detach |
 | `src/state.c`       | Container records on disk (id, status, pids, exit code)     |
-| `src/commands.c`    | `ps`, `inspect`, `stop`, `rm`                               |
+| `src/commands.c`    | `ps`, `inspect`, `logs`, `stop`, `rm`                       |
 | `src/fs.c`          | Private mounts, `pivot_root`, `/dev`, `/tmp`, `/proc`       |
 | `src/cgroup.c`      | cgroups v2: create group, set limits, move pid, clean up    |
 | `src/util.c`        | Logging and small file helpers                              |
@@ -54,7 +54,7 @@ child, so the program never starts without the limits the user asked for.
 ## Container lifecycle and state
 
 There is no daemon. Instead, every `mcr run` process supervises its own
-container and keeps a small record on disk, so that `ps`, `inspect`, `stop`
+container and keeps a small record on disk, so that `ps`, `inspect`, `logs`, `stop`
 and `rm` (separate short-lived `mcr` processes) can find it.
 
 ```text
@@ -90,6 +90,22 @@ Design notes:
 - **`run -d`** forks once, the parent prints the id and exits, and the child
   calls `setsid()`, redirects its output to `output.log` and carries on as the
   supervisor.
+
+### `logs`
+
+A detached container's stdout and stderr go to `output.log` in its state
+directory, so `mcr logs <id>` just reads that file. Foreground containers print
+to the terminal and have no log file; `logs` says so instead of failing
+silently.
+
+- `--tail N` finds the start of the last N lines by scanning the file
+  backwards from the end in 4 KiB blocks (`file_tail_offset` in `util.c`), so a
+  huge log costs almost nothing. A final line without a newline counts as a line.
+- `--follow` polls the file every 100 ms for new output, like `tail -f`, and
+  returns by itself once the container has stopped. The container's status is
+  checked *before* the last read, so anything written right before the exit is
+  still printed.
+- The log is kept until `mcr rm` deletes the container's directory.
 
 ### `stop`
 
@@ -192,6 +208,6 @@ signal. A second signal is therefore turned into `SIGKILL`.
 - No user namespace; the container runs as real root, so it is **not** a
   security boundary. Use it for learning, not for untrusted code.
 - No capability dropping or seccomp filtering.
-- No `exec` or `logs` subcommand; the log of a detached container is the file
-  `/run/mcr/containers/<id>/output.log`.
+- No `exec` subcommand. Logs are only kept for detached containers and are never
+  rotated, so a very chatty container makes its `output.log` grow without limit.
 - A container cannot be restarted; start a new one with `run`.
