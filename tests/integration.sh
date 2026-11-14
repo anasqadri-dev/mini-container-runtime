@@ -187,6 +187,34 @@ kill -9 "$sup"; sleep 0.3
 "$MCR" stop -t 1 "$id" >/dev/null 2>&1
 "$MCR" ps | grep "$id" | grep -q "STOPPED" && ok "a container whose supervisor was killed can still be stopped" || bad "orphan container"
 
+# logs: output of a detached container is kept and can be read back
+id="$("$MCR" run -d -- sh -c 'echo first; echo second; echo third; sleep 300')"
+sleep 0.5
+out="$("$MCR" logs "$id")"
+[ "$out" = "$(printf 'first\nsecond\nthird')" ] && ok "logs shows the output of a detached container" || bad "logs output" "got '$out'"
+out="$("$MCR" logs -n 2 "$id")"
+[ "$out" = "$(printf 'second\nthird')" ] && ok "logs --tail 2 shows only the last two lines" || bad "logs --tail" "got '$out'"
+out="$("$MCR" logs -n 0 "$id")"
+[ -z "$out" ] && ok "logs --tail 0 shows nothing" || bad "logs --tail 0" "got '$out'"
+"$MCR" rm -f -t 1 "$id" >/dev/null 2>&1
+
+# logs -f keeps going while the container runs and stops when it exits,
+# without losing the last line
+id="$("$MCR" run -d -- sh -c 'for i in 1 2 3; do echo tick$i; sleep 0.3; done; echo finished')"
+out="$(timeout 15 "$MCR" logs -f "$id")"; rc=$?
+[ $rc -eq 0 ] && [ "$(echo "$out" | tail -1)" = "finished" ] && [ "$(echo "$out" | wc -l)" -eq 4 ] \
+    && ok "logs --follow prints everything and returns when the container exits" \
+    || bad "logs --follow" "rc=$rc output='$out'"
+
+start=$(date +%s)
+timeout 5 "$MCR" logs -f "$id" >/dev/null
+[ $(( $(date +%s) - start )) -lt 3 ] && ok "logs --follow on a stopped container returns at once" || bad "follow on stopped container hangs"
+
+"$MCR" run -- true
+fg="$(ls -t "$MCR_STATE_DIR" | head -1)"
+"$MCR" logs "$fg" >/dev/null 2>&1; rc=$?
+[ $rc -eq 1 ] && ok "logs on a foreground container explains there is no saved output" || bad "logs on foreground container" "rc=$rc"
+
 "$MCR" inspect nosuchid >/dev/null 2>&1; rc=$?
 [ $rc -eq 1 ] && ok "unknown container id is an error" || bad "unknown id" "rc=$rc"
 
