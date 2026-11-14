@@ -28,6 +28,8 @@ int main(int argc, char **argv)
         return cmd_ps(&opts);
     case CMD_INSPECT:
         return cmd_inspect(&opts);
+    case CMD_LOGS:
+        return cmd_logs(&opts);
     case CMD_STOP:
         return cmd_stop(&opts);
     case CMD_RM:
