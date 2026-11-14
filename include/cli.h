@@ -13,6 +13,7 @@ typedef enum {
     CMD_INSPECT,
     CMD_STOP,
     CMD_RM,
+    CMD_LOGS,
     CMD_HELP,
     CMD_VERSION
 } mcr_command_t;
@@ -34,6 +35,8 @@ typedef struct {
     const char *id;           /* container id or unique prefix */
     int         stop_timeout; /* stop: seconds to wait after SIGTERM before SIGKILL */
     int         force;        /* rm: stop a running container first */
+    int         follow;       /* logs: keep waiting for new output */
+    long        tail_lines;   /* logs: show only the last N lines, -1 = all */
 
     char      **cmd_argv;     /* program to run inside the container */
     int         cmd_argc;
